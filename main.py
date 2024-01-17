@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from marshmallow import Schema, fields, ValidationError
 
 # DB connection
 app = Flask(__name__)
@@ -20,6 +21,17 @@ class Pokemon(db.Model):
     name = db.Column(db.String(50), nullable=False)
     description = db.Column(db.String(200))
     type_id = db.Column(db.Integer, db.ForeignKey('type.id'), nullable=False)
+
+
+# class for validation
+    
+class TypeSchema(Schema):
+    type_name = fields.Str(required=True)
+
+class PokemonSchema(Schema):
+    name = fields.Str(required=True)
+    description = fields.Str(required=False)
+    type_id = fields.Int(required=True)
 
 
 # Define routes
@@ -68,24 +80,42 @@ def get_pokemon(pokemon_id):
 # STORE
 @app.route('/api/v2/pokemons', methods=['POST'])
 def create_pokemon():
-    data = request.get_json()
-    new_pokemon = Pokemon(name=data['name'], description=data.get('description', ''), type_id=data['type_id'])
-    db.session.add(new_pokemon)
-    db.session.commit()
-    return jsonify({'message': f'Pokemon {data["name"]} created successfully'}), 201
+    try:
+        data = request.get_json()
+        # validate incoming data
+        validated_data = PokemonSchema().load(data)
+
+        new_pokemon = Pokemon(name=validated_data['name'], 
+                              description=validated_data.get('description', ''), 
+                              type_id=validated_data['type_id'])
+        
+        db.session.add(new_pokemon)
+        db.session.commit()
+
+        return jsonify({'message': f'Pokemon {data["name"]} created successfully'}), 201
+    
+    except ValidationError as e:
+        return jsonify({'message': 'Validation error', 'errors': e.messages}), 400
 
 
 # UPDATE
 @app.route('/api/v2/pokemon/<int:pokemon_id>', methods=['PUT'])
 def update_pokemon(pokemon_id):
     pokemon = Pokemon.query.session.get(Pokemon, pokemon_id)
+
     if pokemon:
-        data = request.get_json()
-        pokemon.name = data['name']
-        pokemon.description = data.get('description', '')
-        pokemon.type_id = data['type_id']
-        db.session.commit()
-        return jsonify({'message': f'Pokemon with id: {pokemon.id} updated successfully'})
+        try:
+            data = request.get_json()
+            # validate incoming data
+            validated_data = PokemonSchema().load(data)
+            pokemon.name = validated_data['name']
+            pokemon.description = validated_data.get('description', '')
+            pokemon.type_id = validated_data['type_id']
+            db.session.commit()
+            return jsonify({'message': f'Pokemon with id: {pokemon.id} updated successfully'})
+        
+        except ValidationError as e:
+            return jsonify({'message': 'Validation error', 'errors': e.messages}), 400
     else:
         return jsonify({'message': 'Pokemon not found'}), 404
     
@@ -100,6 +130,12 @@ def delete_pokemon(pokemon_id):
         return jsonify({'message': f'{pokemon.name} deleted successfully'})
     else:
         return jsonify({'message': 'Pokemon not found'}), 404
+
+
+# check if table has been created   
+with app.app_context():
+    if db.inspect(db.engine).has_table('user'):
+        db.create_all()
 
 
 # run app
