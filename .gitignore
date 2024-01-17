@@ -1,0 +1,11 @@
+# Ignore Python byte-compiled files
+*.pyc
+*.pyo
+__pycache__/
+
+
+# Ignore Visual Studio Code .vscode directory
+.vscode/
+
+# Ignore python virtial environment folder
+.venv/
